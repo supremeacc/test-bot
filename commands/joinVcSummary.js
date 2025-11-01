@@ -1,5 +1,5 @@
 const { SlashCommandBuilder } = require('discord.js');
-const { joinVoiceChannel, VoiceConnectionStatus, entersState } = require('@discordjs/voice');
+const { joinVoiceChannel, getVoiceConnection, VoiceConnectionStatus, entersState } = require('@discordjs/voice');
 const { createSession, getActiveSession, addParticipant, addRecording, addTranscript, addRecordingPromise, endSession } = require('../utils/voiceSessionManager');
 const { loadProjectData } = require('../utils/projectManager');
 const { recordUser } = require('../utils/audioRecorder');
@@ -32,6 +32,20 @@ module.exports = {
         return;
       }
 
+      if (!voiceChannel.joinable) {
+        await interaction.editReply({
+          content: '❌ I don\'t have permission to join this voice channel. Please check my role permissions.'
+        });
+        return;
+      }
+
+      if (!voiceChannel.speakable) {
+        await interaction.editReply({
+          content: '⚠️ I can join but cannot speak. Please grant me "Speak" permission in this voice channel.'
+        });
+        return;
+      }
+
       const projectData = loadProjectData();
       let projectId = null;
       
@@ -46,36 +60,75 @@ module.exports = {
 
       let connection;
       let retries = 0;
-      const maxRetries = 3;
-      const retryDelay = 2000;
+      const maxRetries = 2;
 
-      while (retries < maxRetries) {
+      while (retries <= maxRetries) {
         try {
+          const existingConnection = getVoiceConnection(voiceChannel.guild.id);
+          if (existingConnection) {
+            existingConnection.destroy();
+            console.log('🔄 Destroyed existing connection before creating new one');
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+
+          console.log(`🔌 Connection attempt ${retries + 1}/${maxRetries + 1}...`);
+          
           connection = joinVoiceChannel({
             channelId: voiceChannel.id,
             guildId: voiceChannel.guild.id,
             adapterCreator: voiceChannel.guild.voiceAdapterCreator,
             selfDeaf: false,
-            selfMute: true
+            selfMute: false
           });
 
-          await entersState(connection, VoiceConnectionStatus.Ready, 10000);
-          console.log('✅ Voice connection established');
+          const timeout = retries === 0 ? 20000 : 25000;
+          
+          await Promise.race([
+            entersState(connection, VoiceConnectionStatus.Ready, timeout),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error(`Voice connection timeout after ${timeout}ms`)), timeout)
+            )
+          ]);
+          
+          console.log('✅ Voice connection established successfully');
+          
+          connection.on('stateChange', (oldState, newState) => {
+            console.log(`🔊 Voice connection state: ${oldState.status} → ${newState.status}`);
+          });
+          
           break;
         } catch (error) {
+          console.error(`⚠️ Connection attempt ${retries + 1}/${maxRetries + 1} failed:`, error.message);
+          console.error('Full error details:', error);
+          
+          if (connection) {
+            try {
+              connection.destroy();
+            } catch (destroyError) {
+              console.error('Error destroying failed connection:', destroyError);
+            }
+          }
+          
           retries++;
-          console.error(`⚠️ Connection attempt ${retries}/${maxRetries} failed:`, error.message);
           
-          if (connection) connection.destroy();
-          
-          if (retries < maxRetries) {
-            console.log(`🔄 Retrying in ${retryDelay/1000} seconds...`);
-            await new Promise(resolve => setTimeout(resolve, retryDelay));
+          if (retries <= maxRetries) {
+            const delay = retries === 1 ? 3000 : 5000;
+            console.log(`🔄 Retrying in ${delay/1000} seconds with longer timeout...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
           } else {
-            console.error('❌ All connection attempts failed. Full error:', error);
+            console.error('❌ All connection attempts exhausted. Full error:', error);
             await interaction.editReply({
-              content: '⚠️ Couldn\'t connect to the VC. Please ensure I have permissions (Connect, Speak, Use Voice Activity).\n\n' +
-                       `Error: ${error.message}`
+              content: '⚠️ **Failed to connect to the voice channel after multiple attempts.**\n\n' +
+                       '**This may be due to:**\n' +
+                       '• Slow network connection (common on Replit)\n' +
+                       '• Missing bot permissions (Connect, Speak, Use Voice Activity)\n' +
+                       '• Discord voice server issues\n\n' +
+                       `**Error:** \`${error.message}\`\n\n` +
+                       '**What to try:**\n' +
+                       '1. Wait a few seconds and try again\n' +
+                       '2. Try a different voice channel\n' +
+                       '3. Check the bot has proper permissions\n' +
+                       '4. Ensure the bot role has "Connect" and "Speak" enabled'
             });
             return;
           }

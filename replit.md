@@ -88,13 +88,14 @@ The following environment variables must be configured in Replit Secrets:
 
 ### File Structure
 - `/commands/` - Slash command implementations
-- `/handlers/` - Event and interaction handlers
-- `/utils/` - Helper utilities for formatting, validation, AI analysis, etc.
+- `/handlers/` - Event and interaction handlers (intro modals, project interactions)
+- `/utils/` - Helper utilities for formatting, validation, AI analysis, config management, etc.
 - `/recordings/` - Temporary audio recordings (auto-created, excluded from git)
-- `profiles.json` - User profile data (auto-created, excluded from git)
+- `profiles.json` - User profile data with full intro info (auto-created, excluded from git)
 - `projectData.json` - Project workspace data (auto-created, excluded from git)
 - `vcSessions.json` - Voice session data (auto-created, excluded from git)
 - `userPreferences.json` - User language preferences for summaries (auto-created, excluded from git)
+- `botConfig.json` - Bot configuration from setup wizard (auto-created, excluded from git)
 
 ### Workflow Configuration
 - **Name:** discord-bot
@@ -109,7 +110,34 @@ The following environment variables must be configured in Replit Secrets:
 - Old recordings are automatically cleaned up after 7 days
 - If adding new runtime data files, update `.gitignore` accordingly
 
-## Recent Updates (October 31, 2025)
+## Recent Updates
+
+### November 1, 2025 - Modern Setup Wizard & Button-Based Introductions
+- **Setup Wizard**: New `/setup-bot` command with interactive dropdowns to configure channels and roles
+- **Configuration Storage**: Bot settings now stored in `botConfig.json` for easy management
+- **Reset Command**: `/setup-reset` allows admins to clear configuration and start fresh
+- **Button-Based Introductions**: Users click a button to open a modal form instead of typing messages
+- **Modal Forms**: Clean, structured form with fields for Name, Role, Institution, Interests, Skills, Experience, and Goals
+- **AI-Powered Processing**: Gemini AI refines introductions in Hinglish/English and assigns appropriate roles
+- **Auto Role Assignment**: Bot assigns existing server roles based on AI analysis of skills and interests
+- **Edit Profile Command**: New `/edit-profile` command with pre-filled modal for easy profile updates
+- **Enhanced Profile Storage**: Profiles now store full intro data, AI processing results, and experience levels
+- **Setup Intro Button**: New `/setup-intro-button` command to post the introduction button in any channel
+- **Experience-Based Colors**: 🟢 Beginner (Green), 🟡 Builder (Yellow), 🔴 Pro (Red)
+
+### November 1, 2025 - Voice Connection Enhancements (ABORT_ERR Fix)
+- **Fixed ABORT_ERR Issue**: Implemented Promise.race pattern to prevent abort errors on slow networks
+- **Progressive Timeout Strategy**: First attempt 20s, retry attempts 25s (optimized for Replit environment)
+- **Permission Pre-validation**: Checks `joinable` and `speakable` permissions before attempting connection
+- **Improved VC Connection Reliability**: Enhanced retry mechanism with automatic cleanup of existing connections
+- **Better Error Handling**: More detailed error messages and troubleshooting guidance for connection failures
+- **Progressive Retry Delays**: 3s after first failure, 5s after second for better stability
+- **Optimal Recording Settings**: Changed to `selfMute: false` and `selfDeaf: false` for better audio capture
+- **Extended Recording Duration**: Increased from 30 seconds to 5 minutes (300 seconds) per participant
+- **Connection State Monitoring**: Added real-time logging of voice connection state changes for easier debugging
+- **Pre-connection Cleanup**: Automatically destroys existing connections before creating new ones to prevent conflicts
+
+### October 31, 2025
 
 ### Voice Meeting Summary Enhancements
 - **Auto-retry Connection**: Bot now retries up to 3 times (2 seconds apart) when joining VC

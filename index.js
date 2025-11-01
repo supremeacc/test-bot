@@ -18,6 +18,12 @@ const {
   handleApproveButton,
   handleRejectButton
 } = require('./handlers/projectInteractions');
+const {
+  handleIntroButton,
+  handleIntroModal,
+  handleEditProfileModal
+} = require('./handlers/introInteractions');
+const { loadConfig, isSetupComplete } = require('./utils/configManager');
 const { startCleanupScheduler } = require('./utils/projectCleanup');
 const fs = require('fs');
 const path = require('path');
@@ -52,10 +58,23 @@ const GEMINI_ENABLED = !!process.env.GEMINI_API_KEY;
 client.once('clientReady', async () => {
   console.log('✅ Bot is online!');
   console.log(`📝 Logged in as ${client.user.tag}`);
-  console.log(`🎯 Listening to introductions in channel: ${INTRO_CHANNEL_ID}`);
-  console.log(`📋 Posting profiles to channel: ${PROFILE_CHANNEL_ID}`);
+  
+  const config = loadConfig();
+  const setupComplete = isSetupComplete();
+  
+  if (setupComplete) {
+    console.log('🛠️ Bot Configuration: Complete ✅');
+    console.log(`📝 Intro Channel: ${config.introChannelId}`);
+    console.log(`📋 Profile Channel: ${config.profileChannelId}`);
+    console.log(`👮 Moderator Role: ${config.moderatorRoleId || 'Not set'}`);
+  } else {
+    console.log('⚠️ Bot Configuration: Incomplete');
+    console.log('👉 Run /setup-bot to configure the bot');
+  }
+  
   console.log(`🤖 Gemini AI: ${GEMINI_ENABLED ? 'Enabled ✅' : 'Disabled ⚠️'}`);
   console.log(`🎙️ Voice Summarizer: Enabled ✅`);
+  console.log(`🪪 Modern Intro System: Enabled ✅`);
   
   const commands = [];
   for (const command of client.commands.values()) {
@@ -191,7 +210,9 @@ client.on('messageCreate', async (message) => {
 client.on('interactionCreate', async interaction => {
   if (interaction.isButton()) {
     try {
-      if (interaction.customId === 'project_apply') {
+      if (interaction.customId === 'intro_button') {
+        await handleIntroButton(interaction);
+      } else if (interaction.customId === 'project_apply') {
         await handleApplyButton(interaction);
       } else if (interaction.customId.startsWith('approve_project_')) {
         await handleApproveButton(interaction);
@@ -215,12 +236,18 @@ client.on('interactionCreate', async interaction => {
 
   if (interaction.isModalSubmit()) {
     try {
-      await handleModalSubmit(interaction);
+      if (interaction.customId === 'intro_modal') {
+        await handleIntroModal(interaction);
+      } else if (interaction.customId === 'edit_profile_modal') {
+        await handleEditProfileModal(interaction);
+      } else {
+        await handleModalSubmit(interaction);
+      }
     } catch (error) {
       console.error('❌ Error handling modal submission:', error);
       try {
         await interaction.reply({
-          content: '❌ There was an error processing your application!',
+          content: '❌ There was an error processing your submission!',
           ephemeral: true
         });
       } catch (err) {

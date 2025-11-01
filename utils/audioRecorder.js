@@ -54,8 +54,9 @@ function recordUser(connection, userId, guildId) {
       setTimeout(() => {
         if (!writeStream.closed) {
           audioStream.destroy();
+          console.log(`⏱️ Recording timeout for user ${userId} (max duration reached)`);
         }
-      }, 30000);
+      }, 300000);
 
     } catch (error) {
       console.error(`❌ Error setting up recording for ${userId}:`, error);

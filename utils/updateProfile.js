@@ -21,9 +21,13 @@ async function getUserProfile(userId) {
   return profiles[userId] || null;
 }
 
-async function saveUserProfile(userId, messageId) {
+async function saveUserProfile(userId, messageId, additionalData = {}) {
   const profiles = await loadProfiles();
-  profiles[userId] = { messageId, timestamp: Date.now() };
+  profiles[userId] = { 
+    messageId, 
+    timestamp: Date.now(),
+    ...additionalData
+  };
   await saveProfiles(profiles);
 }
 
