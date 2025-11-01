@@ -2,7 +2,9 @@ const fs = require('fs');
 const path = require('path');
 
 const SESSION_FILE = path.join(__dirname, '..', 'vcSessions.json');
+const PREFERENCES_FILE = path.join(__dirname, '..', 'userPreferences.json');
 const activeSessions = new Map();
+const languagePreferences = new Map();
 
 function loadSessions() {
   try {
@@ -24,10 +26,50 @@ function saveSessions(data) {
   }
 }
 
+function loadPreferences() {
+  try {
+    if (fs.existsSync(PREFERENCES_FILE)) {
+      const data = fs.readFileSync(PREFERENCES_FILE, 'utf8');
+      const prefs = JSON.parse(data);
+      Object.entries(prefs).forEach(([userId, pref]) => {
+        languagePreferences.set(userId, pref);
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error loading preferences:', error);
+  }
+}
+
+function savePreferences() {
+  try {
+    const prefs = {};
+    languagePreferences.forEach((value, key) => {
+      prefs[key] = value;
+    });
+    fs.writeFileSync(PREFERENCES_FILE, JSON.stringify(prefs, null, 2));
+  } catch (error) {
+    console.error('❌ Error saving preferences:', error);
+  }
+}
+
+loadPreferences();
+
+function setLanguagePreference(guildId, userId, mode) {
+  languagePreferences.set(userId, mode);
+  savePreferences();
+  console.log(`📝 Language preference set for ${userId}: ${mode}`);
+}
+
+function getLanguagePreference(userId) {
+  return languagePreferences.get(userId) || 'auto';
+}
+
 const recordingPromises = new Map();
 
 function createSession(guildId, channelId, userId, projectId = null) {
   const sessionId = `${guildId}-${Date.now()}`;
+  
+  const languageMode = getLanguagePreference(userId);
   
   const session = {
     sessionId,
@@ -40,7 +82,8 @@ function createSession(guildId, channelId, userId, projectId = null) {
     recordings: {},
     transcripts: [],
     status: 'recording',
-    lastSummary: null
+    lastSummary: null,
+    languageMode
   };
   
   activeSessions.set(guildId, session);
@@ -50,7 +93,7 @@ function createSession(guildId, channelId, userId, projectId = null) {
   data.sessions[sessionId] = session;
   saveSessions(data);
   
-  console.log(`🎙️ Created VC session: ${sessionId}`);
+  console.log(`🎙️ Created VC session: ${sessionId} (language: ${languageMode})`);
   return session;
 }
 
@@ -166,5 +209,7 @@ module.exports = {
   saveSummaryToSession,
   getLastSession,
   addRecordingPromise,
-  waitForRecordings
+  waitForRecordings,
+  setLanguagePreference,
+  getLanguagePreference
 };

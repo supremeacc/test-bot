@@ -1,4 +1,11 @@
 require('dotenv').config();
+
+const sodium = require('libsodium-wrappers');
+(async () => {
+  await sodium.ready;
+  console.log('🔐 Libsodium initialized for voice encoding');
+})();
+
 const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord.js');
 const { validateIntro, requiredFields } = require('./utils/validateIntro');
 const { formatEmbed, formatAIEnhancedEmbed } = require('./utils/formatEmbed');

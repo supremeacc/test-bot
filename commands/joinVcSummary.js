@@ -1,6 +1,6 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { joinVoiceChannel, VoiceConnectionStatus, entersState } = require('@discordjs/voice');
-const { createSession, getActiveSession, addParticipant, addRecording, addTranscript, addRecordingPromise } = require('../utils/voiceSessionManager');
+const { createSession, getActiveSession, addParticipant, addRecording, addTranscript, addRecordingPromise, endSession } = require('../utils/voiceSessionManager');
 const { loadProjectData } = require('../utils/projectManager');
 const { recordUser } = require('../utils/audioRecorder');
 const { transcribeAudio } = require('../utils/geminiTranscribe');
@@ -44,23 +44,42 @@ module.exports = {
 
       console.log(`🎙️ Joining voice channel: ${voiceChannel.name}`);
 
-      const connection = joinVoiceChannel({
-        channelId: voiceChannel.id,
-        guildId: voiceChannel.guild.id,
-        adapterCreator: voiceChannel.guild.voiceAdapterCreator,
-        selfDeaf: false,
-        selfMute: true
-      });
+      let connection;
+      let retries = 0;
+      const maxRetries = 3;
+      const retryDelay = 2000;
 
-      try {
-        await entersState(connection, VoiceConnectionStatus.Ready, 30000);
-        console.log('✅ Voice connection established');
-      } catch (error) {
-        connection.destroy();
-        await interaction.editReply({
-          content: '❌ Failed to connect to the voice channel. Please try again.'
-        });
-        return;
+      while (retries < maxRetries) {
+        try {
+          connection = joinVoiceChannel({
+            channelId: voiceChannel.id,
+            guildId: voiceChannel.guild.id,
+            adapterCreator: voiceChannel.guild.voiceAdapterCreator,
+            selfDeaf: false,
+            selfMute: true
+          });
+
+          await entersState(connection, VoiceConnectionStatus.Ready, 10000);
+          console.log('✅ Voice connection established');
+          break;
+        } catch (error) {
+          retries++;
+          console.error(`⚠️ Connection attempt ${retries}/${maxRetries} failed:`, error.message);
+          
+          if (connection) connection.destroy();
+          
+          if (retries < maxRetries) {
+            console.log(`🔄 Retrying in ${retryDelay/1000} seconds...`);
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+          } else {
+            console.error('❌ All connection attempts failed. Full error:', error);
+            await interaction.editReply({
+              content: '⚠️ Couldn\'t connect to the VC. Please ensure I have permissions (Connect, Speak, Use Voice Activity).\n\n' +
+                       `Error: ${error.message}`
+            });
+            return;
+          }
+        }
       }
 
       const session = createSession(
@@ -112,17 +131,25 @@ module.exports = {
 
       const publicChannel = interaction.channel;
       await publicChannel.send({
-        content: `🎤 **Meeting Recording Started**\n\n` +
+        content: `🎙️ **Listening to your VC discussion…**\n\n` +
                  `Voice Channel: **${voiceChannel.name}**\n` +
                  `Initiated by: <@${interaction.user.id}>\n` +
                  `Participants: ${participantTags}\n\n` +
-                 `_Recording in progress... Use \`/summarize-vc\` to generate summary when finished._`
+                 `_Recording in progress... Use \`/summarize-vc\` when finished._`
+      });
+
+      connection.on(VoiceConnectionStatus.Destroyed, () => {
+        const activeSession = getActiveSession(interaction.guildId);
+        if (activeSession && activeSession.status === 'recording') {
+          endSession(interaction.guildId);
+          console.log('🛑 Session cleaned up after connection destroyed');
+        }
       });
 
     } catch (error) {
       console.error('❌ Error in /join-vc-summary:', error);
       await interaction.editReply({
-        content: '❌ An error occurred while joining the voice channel. Please try again.'
+        content: '🛠️ Something went wrong while connecting. Please retry.'
       });
     }
   }

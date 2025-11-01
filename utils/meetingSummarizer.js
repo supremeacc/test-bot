@@ -2,7 +2,7 @@ const { GoogleGenAI } = require('@google/genai');
 
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
-async function summarizeMeeting(transcripts, sessionInfo) {
+async function summarizeMeeting(transcripts, sessionInfo, languageMode = 'auto') {
   if (!process.env.GEMINI_API_KEY) {
     return {
       success: false,
@@ -21,7 +21,11 @@ async function summarizeMeeting(transcripts, sessionInfo) {
       ? Math.round((sessionInfo.endTime - sessionInfo.startTime) / 60000) 
       : 'Unknown';
     
-    const prompt = `You are an AI meeting assistant. Analyze this voice channel conversation and provide a comprehensive summary.
+    const languageInstruction = languageMode === 'auto' 
+      ? 'Detect if the conversation is in English, Hindi, or Hinglish. Generate the summary in the same language/tone as detected.'
+      : `Generate the summary in ${languageMode === 'hinglish' ? 'Hinglish (mix of Hindi and English)' : languageMode}.`;
+    
+    const prompt = `You are an AI meeting assistant for the AI Learners India community. Analyze this voice channel conversation.
 
 Voice Channel Meeting Transcript:
 ${combinedTranscript}
@@ -29,28 +33,40 @@ ${combinedTranscript}
 Meeting Duration: ${duration} minutes
 Participants: ${sessionInfo.participants.length} people
 
-Please provide a structured summary with the following sections:
+${languageInstruction}
 
-1. OVERVIEW: A brief 2-3 sentence overview of what was discussed
+Provide a CONCISE Minutes of Meeting (MoM) summary with:
 
-2. KEY DISCUSSION POINTS: List 3-7 main topics discussed (bullet points)
+1. OVERVIEW: 1-2 sentences summarizing the meeting (in detected language)
 
-3. DECISIONS MADE: List any concrete decisions or conclusions reached (bullet points, or "None" if no decisions)
+2. KEY TOPICS: 3-5 bullet points of major topics discussed (keep each under 10 words)
 
-4. ACTION ITEMS: List specific tasks or action items with responsible parties if mentioned (bullet points, or "None" if no action items)
+3. DECISIONS: Any concrete decisions made (or "None")
 
-5. NOTABLE QUOTES OR HIGHLIGHTS: Any memorable quotes, insights, or important statements (2-3 items, or "None")
+4. ACTION ITEMS: Specific tasks with people mentioned if detected (or "None")
 
-6. NEXT STEPS: Suggested next steps or follow-up items
+5. NEXT STEPS: 1-2 next actions (or "None")
 
-Format your response as JSON with these keys:
+6. LANGUAGE DETECTED: One of: "English", "Hindi", "Hinglish"
+
+7. MEETING TONE: Analyze keywords and classify as:
+   - "productive" (keywords: plan, launch, finished, completed, decided, agreed)
+   - "brainstorming" (keywords: idea, discuss, maybe, could, should, thinking)
+   - "blockers" (keywords: issue, problem, stuck, error, failed, confused)
+
+Keep the ENTIRE summary under 10 lines total. Be concise and clear.
+
+For Hinglish example: "Team ne kal tak model deploy karne aur report bhejne ka plan banaya."
+
+Format as JSON:
 {
   "overview": "string",
   "discussion_points": ["string"],
   "decisions": ["string"],
   "action_items": ["string"],
-  "highlights": ["string"],
-  "next_steps": ["string"]
+  "next_steps": ["string"],
+  "language_detected": "English|Hindi|Hinglish",
+  "meeting_tone": "productive|brainstorming|blockers"
 }`;
 
     const response = await genAI.models.generateContent({
@@ -79,28 +95,34 @@ Format your response as JSON with these keys:
               type: 'array',
               items: { type: 'string' }
             },
-            highlights: { 
-              type: 'array',
-              items: { type: 'string' }
-            },
             next_steps: { 
               type: 'array',
               items: { type: 'string' }
+            },
+            language_detected: {
+              type: 'string',
+              enum: ['English', 'Hindi', 'Hinglish']
+            },
+            meeting_tone: {
+              type: 'string',
+              enum: ['productive', 'brainstorming', 'blockers']
             }
           },
-          required: ['overview', 'discussion_points', 'decisions', 'action_items', 'highlights', 'next_steps']
+          required: ['overview', 'discussion_points', 'decisions', 'action_items', 'next_steps', 'language_detected', 'meeting_tone']
         }
       }
     });
 
     const summaryData = JSON.parse(response.text());
     
-    console.log('✅ Meeting summary generated successfully');
+    console.log(`✅ Meeting summary generated (${summaryData.language_detected}, ${summaryData.meeting_tone})`);
     
     return {
       success: true,
       summary: summaryData,
-      rawTranscript: combinedTranscript
+      rawTranscript: combinedTranscript,
+      language: summaryData.language_detected,
+      tone: summaryData.meeting_tone
     };
     
   } catch (error) {
